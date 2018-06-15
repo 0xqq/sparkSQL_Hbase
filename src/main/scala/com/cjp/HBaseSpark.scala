@@ -35,24 +35,17 @@ object HBaseSpark {
       .config(conf)
       .getOrCreate()
     val sc = ss.sparkContext
-
+    //配置HbaseConfig
     val hBaseConf: Configuration = getHbaseConf
-
-
     // 从数据源获取数据
     val hbaseRDD = sc.newAPIHadoopRDD(hBaseConf, classOf[TableInputFormat], classOf[ImmutableBytesWritable], classOf[Result])
-
-    // 将数据映射为表  也就是将 RDD转化为 dataframe schema
     val count: Long = hbaseRDD.count()
-
     val rowKeyRDD: RDD[String] = hbaseRDD.map(tuple => tuple._1).map(item => Bytes.toString(item.get()))
     //val count1: Long = rowKeyRDD.count()
-    //    rowKeyRDD.take(3).foreach(println)
-
+    // rowKeyRDD.take(3).foreach(println)
     val resultRDD: RDD[Result] = hbaseRDD.map(tuple => tuple._2).cache()
     //val count2: Long = resultRDD.count()
-
-
+    //操作hbaseRDD 整理返回自己想要的 RDD格式,这里整理成org.apache.spark.sql.Row(colum01,colum02,colum03)
     val keyValueRDD = resultRDD.map(result => {
       var results = Array(result)
       val maps: util.List[util.Map[String, String]] = toMapsFromResultArr(results)
@@ -64,6 +57,8 @@ object HBaseSpark {
       .map(arr =>
         org.apache.spark.sql.Row(arr(0), arr(1), arr(2), arr(3), arr(4), arr(5), arr(6), arr(7), arr(8), arr(9), arr(10), arr(11), arr(12), arr(13), arr(14), arr(15), arr(16), arr(17), arr(18), arr(19), arr(20), arr(20), arr(20), arr(20), arr(20), arr(20))
       ).cache() //这里测试结果：可超过26个字段，不受Tuple20 限制
+
+    //准备 createDataFrame的 schema
     val schemaString = "col1,col2,col3,col4,col5,col6,col7,col8,col9," +
       "col10," +
       "col11," +
@@ -83,11 +78,10 @@ object HBaseSpark {
       "col25," +
       "col26"
     val schema = StructType(schemaString.split(",").map(fieldName => StructField(fieldName.trim, StringType, true)))
-
+    //RDD[Row] 转DataFrame,并注册成临时表
     val keyValueDF: DataFrame = ss.createDataFrame(keyValueRDD, schema)
     keyValueDF.createOrReplaceTempView("table1")
-
-    //分析需求：根据col8列进行分组统计，列出每组中最接近当前时间的前三条记录
+    //SparkSQL 统计；分析需求：根据col8列进行分组统计，列出每组中最接近当前时间的前三条记录
     var sql =
       s"""
          |select * from
@@ -99,12 +93,11 @@ object HBaseSpark {
        """.stripMargin
     val resultDF: DataFrame = ss.sql(sql).cache()
     resultDF.show()
-
-    val putsRDD: RDD[(ImmutableBytesWritable, Put)] = resultDF2Puts(resultDF).cache()
-
-    //    把分析结果存到Hbase(或者Redis\Mysql等)
+    // 把分析结果存到Hbase(或者Redis\Mysql等)
     val jobConf: JobConf = CommUtil.getHbaseJobConf(table_output, zkAddress)
-    val count3: Long = putsRDD.count()
+    //sql.DataFrame转 hbase.client.Put
+    val putsRDD: RDD[(ImmutableBytesWritable, Put)] = resultDF2Puts(resultDF).cache()
+    // val count3: Long = putsRDD.count()
     putsRDD.saveAsHadoopDataset(jobConf)
     sc.stop()
     ss.stop
