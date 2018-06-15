@@ -2,9 +2,9 @@ package com.cjp
 
 import java.util
 
+import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.hbase.client._
 import org.apache.hadoop.hbase.io.ImmutableBytesWritable
-import org.apache.hadoop.hbase.mapred.TableOutputFormat
 import org.apache.hadoop.hbase.mapreduce.TableInputFormat
 import org.apache.hadoop.hbase.util.Bytes
 import org.apache.hadoop.hbase.{Cell, CellUtil, HBaseConfiguration, HConstants}
@@ -22,7 +22,7 @@ object HBaseSpark {
   val zkAddress = "hb-proxy-pub-bp1987l1fy04etj46-002.hbase.rds.aliyuncs.com:2181,hb-proxy-pub-bp1987l1fy04etj46-001.hbase.rds.aliyuncs.com:2181,hb-proxy-pub-bp1987l1fy04etj46-003.hbase.rds.aliyuncs.com:2181"
   val table_input = "bigdata:click"
   val table_output = "bigdata:click_dev"
-  val scan_row_start = "26_861084038826964_20180606171907929"
+  val scan_row_start = "26_86108"
   val scan_row_stop = "26_861084038826964_20180612105450046"
   val scan_column_family = "info"
   val scan_columns = "info:click"
@@ -36,13 +36,7 @@ object HBaseSpark {
       .getOrCreate()
     val sc = ss.sparkContext
 
-    val hBaseConf = HBaseConfiguration.create()
-    hBaseConf.set(HConstants.ZOOKEEPER_QUORUM, zkAddress)
-    hBaseConf.set(TableInputFormat.INPUT_TABLE, table_input)
-    hBaseConf.set(TableInputFormat.SCAN_ROW_START, scan_row_start)
-    hBaseConf.set(TableInputFormat.SCAN_ROW_STOP, scan_row_stop)
-    //hBaseConf.set(TableInputFormat.SCAN_COLUMNS, scan_columns)
-    hBaseConf.set(TableInputFormat.SCAN_COLUMN_FAMILY, scan_column_family)
+    val hBaseConf: Configuration = getHbaseConf
 
 
     // 从数据源获取数据
@@ -52,11 +46,11 @@ object HBaseSpark {
     val count: Long = hbaseRDD.count()
 
     val rowKeyRDD: RDD[String] = hbaseRDD.map(tuple => tuple._1).map(item => Bytes.toString(item.get()))
-    val count1: Long = rowKeyRDD.count()
+    //val count1: Long = rowKeyRDD.count()
     //    rowKeyRDD.take(3).foreach(println)
 
     val resultRDD: RDD[Result] = hbaseRDD.map(tuple => tuple._2).cache()
-    val count2: Long = hbaseRDD.count()
+    //val count2: Long = resultRDD.count()
 
 
     val keyValueRDD = resultRDD.map(result => {
@@ -109,25 +103,24 @@ object HBaseSpark {
     val putsRDD: RDD[(ImmutableBytesWritable, Put)] = resultDF2Puts(resultDF).cache()
 
     //    把分析结果存到Hbase(或者Redis\Mysql等)
-    val jobConf = new JobConf(hBaseConf, this.getClass)
-    //    //初始化jobconf，TableOutputFormat必须是org.apache.hadoop.hbase.mapred包下的！
-    jobConf.setOutputFormat(classOf[TableOutputFormat])
-    jobConf.setOutputKeyClass(classOf[ImmutableBytesWritable])
-    jobConf.setOutputValueClass(classOf[Result])
-    jobConf.set(TableOutputFormat.OUTPUT_TABLE, table_output)
+    val jobConf: JobConf = CommUtil.getHbaseJobConf(table_output, zkAddress)
     val count3: Long = putsRDD.count()
     putsRDD.saveAsHadoopDataset(jobConf)
-
-    //    val job = new Job(sc.hadoopConfiguration)
-    //    job.setOutputKeyClass(classOf[ImmutableBytesWritable])
-    //    job.setOutputValueClass(classOf[Result])
-    //    job.setOutputFormatClass(classOf[TableOutputFormat[ImmutableBytesWritable]])
-    //    val count3: Long = putsRDD.count()
-    //    putsRDD.saveAsNewAPIHadoopDataset(job.getConfiguration)
     sc.stop()
     ss.stop
   }
 
+
+  private def getHbaseConf: Configuration = {
+    val hBaseConf = HBaseConfiguration.create()
+    hBaseConf.set(HConstants.ZOOKEEPER_QUORUM, zkAddress)
+    hBaseConf.set(TableInputFormat.INPUT_TABLE, table_input)
+    hBaseConf.set(TableInputFormat.SCAN_ROW_START, scan_row_start)
+    hBaseConf.set(TableInputFormat.SCAN_ROW_STOP, scan_row_stop)
+    //hBaseConf.set(TableInputFormat.SCAN_COLUMNS, scan_columns)
+    hBaseConf.set(TableInputFormat.SCAN_COLUMN_FAMILY, scan_column_family)
+    hBaseConf
+  }
 
   private def resultDF2Puts(resultDF: DataFrame): RDD[(ImmutableBytesWritable, Put)] = {
     val schema2: StructType = resultDF.schema
