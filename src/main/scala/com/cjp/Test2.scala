@@ -1,4 +1,4 @@
-package com.zhibo8
+package com.cjp
 
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.types.{StringType, StructField, StructType}
