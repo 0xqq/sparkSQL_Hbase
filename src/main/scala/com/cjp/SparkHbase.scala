@@ -17,7 +17,7 @@ import org.apache.spark.sql.types.{StringType, StructField, StructType}
 /**
   * spark通过 TableInputFormat和TableOutputFormat来读写hbase
   */
-object HBaseSpark {
+object SparkHbase {
 
   val zkAddress = "hb-proxy-pub-bp1987l1fy04etj46-002.hbase.rds.aliyuncs.com:2181,hb-proxy-pub-bp1987l1fy04etj46-001.hbase.rds.aliyuncs.com:2181,hb-proxy-pub-bp1987l1fy04etj46-003.hbase.rds.aliyuncs.com:2181"
   val table_input = "bigdata:click"
